@@ -62,20 +62,62 @@ if(!cfg?.apiKey||!cfg?.projectId){
     const publicCollection=collection(store,'publicLists');
     let guest=null;
     const guestBox=document.getElementById('communityGuestStudy');
+    function guestSpeak(){
+      if(!guest||!('speechSynthesis' in window))return;
+      const word=guest.list.words[guest.index];if(!word)return;
+      speechSynthesis.cancel();
+      const utterance=new SpeechSynthesisUtterance(word.en);
+      utterance.lang=localStorage.getItem('wordmaster-accent')||'en-US';
+      utterance.rate=.85;
+      const voice=speechSynthesis.getVoices().find(v=>v.lang===utterance.lang);
+      if(voice)utterance.voice=voice;
+      speechSynthesis.speak(utterance);
+    }
+    function guestRate(known){
+      if(!guest||!guest.shown)return;
+      guest.correct+=Number(known);guest.index++;guest.shown=false;
+      drawGuest();
+    }
     function drawGuest(){
       if(!guest)return;
       const {list,index,correct,shown}=guest;
       if(index>=list.words.length){
-        guestBox.innerHTML='<h2>Çalışma tamamlandı</h2><p>'+correct+' / '+list.words.length+' doğru cevap</p><button class="btn alt" id="guestExit">Kapat</button>';
+        const percent=Math.round(correct/list.words.length*100);
+        guestBox.innerHTML='<h2>🎉 Çalışma tamamlandı</h2><p>'+list.words.length+' kelime çalıştın. <strong>'+correct+' doğru</strong> · %'+percent+' başarı.</p><p class="muted">Misafir çalışma geçmişi kaydedilmedi.</p><div class="row"><button class="btn" id="guestAgain">Yeniden çalış</button><button class="btn alt" id="guestExit">Kapat</button></div>';
+        guestBox.querySelector('#guestAgain').onclick=()=>studyPublic(list);
       }else{
-        const w=list.words[index];
-        guestBox.innerHTML='<h2>'+esc(list.title)+' · '+(index+1)+'/'+list.words.length+'</h2><p class="muted">Misafir çalışması kaydedilmez.</p><div class="card" id="guestCard"><div class="word">'+esc(w.en)+'</div>'+(shown?'<strong>'+esc(w.tr)+'</strong><p>'+esc(w.example||'')+'</p>':'<span class="muted">Cevabı görmek için dokun</span>')+'</div><div class="row" style="margin-top:10px">'+(shown?'<button class="btn alt grow" id="guestNo">Bilemedim</button><button class="btn good grow" id="guestYes">Bildim</button>':'<button class="btn grow" id="guestShow">Cevabı göster</button>')+'</div><button class="btn alt small" id="guestExit" style="margin-top:10px">Kapat</button>';
-        if(!shown){const reveal=()=>{guest.shown=true;drawGuest()};guestBox.querySelector('#guestCard').onclick=reveal;guestBox.querySelector('#guestShow').onclick=reveal}
-        else for(const [id,yes] of [['guestNo',false],['guestYes',true]])guestBox.querySelector('#'+id).onclick=()=>{guest.correct+=Number(yes);guest.index++;guest.shown=false;drawGuest()};
+        const w=list.words[index],enFirst=guest.direction==='mixed'?guest.enFirst:guest.direction==='en';
+        const prompt=enFirst?w.en:w.tr,answer=enFirst?w.tr:w.en;
+        guestBox.innerHTML='<div class="row between"><h2>'+esc(list.title)+'</h2><span class="muted">'+(index+1)+' / '+list.words.length+'</span></div><div class="progress" style="margin:12px 0"><div style="width:'+(100*index/list.words.length)+'%"></div></div><div class="row between"><span class="muted">'+(enFirst?'EN → TR':'TR → EN')+'</span><span class="muted">Misafir modu · kayıt tutulmaz</span></div><div class="card" id="guestCard" role="button" tabindex="0" style="margin-top:12px" aria-label="Kartı çevirmek için dokun"><span class="swipe-cue" id="guestCue"></span><span class="hint">'+(enFirst?'İngilizce kelime':'Türkçe anlam')+'</span><div class="word">'+esc(prompt)+'</div>'+(shown?'<div><strong style="font-size:23px">'+esc(answer)+'</strong><p class="muted">'+esc(w.example||'')+'</p><button class="btn alt small" id="guestSpeak">🔊 Dinle</button></div>':'<span class="tap-tip">Kartı çevirmek için dokun</span>')+'</div><p class="swipe-tip">'+(shown?'← Bilemedim　　Bildim →':'Cevabı görmek için karta dokun')+'</p><div class="row">'+(shown?'<button class="btn alt grow" id="guestNo">← Bilemedim</button><button class="btn good grow" id="guestYes">Bildim →</button>':'<button class="btn grow" id="guestShow">↻ Cevabı göster</button>')+'</div><button class="btn alt small" id="guestExit" style="margin-top:12px">Çalışmayı kapat</button>';
+        const card=guestBox.querySelector('#guestCard');
+        const reveal=()=>{if(!guest.shown){guest.shown=true;drawGuest()}else{guest.shown=false;drawGuest()}};
+        card.onclick=reveal;
+        card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();reveal()}};
+        if(shown){
+          guestBox.querySelector('#guestNo').onclick=()=>guestRate(false);
+          guestBox.querySelector('#guestYes').onclick=()=>guestRate(true);
+          guestBox.querySelector('#guestSpeak').onclick=e=>{e.stopPropagation();guestSpeak()};
+        }else guestBox.querySelector('#guestShow').onclick=reveal;
+        let touch=null;
+        card.addEventListener('touchstart',e=>{if(e.touches.length===1)touch={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
+        card.addEventListener('touchend',e=>{
+          if(!touch)return;
+          const dx=e.changedTouches[0].clientX-touch.x,dy=e.changedTouches[0].clientY-touch.y;touch=null;
+          if(Math.abs(dx)<65||Math.abs(dx)<Math.abs(dy)*1.3)return;
+          e.preventDefault();
+          card.onclick=null;
+          if(!guest.shown){guest.shown=true;drawGuest();return}
+          card.classList.add(dx>0?'swipe-right':'swipe-left');
+          setTimeout(()=>guestRate(dx>0),170);
+        },{passive:false});
       }
       guestBox.querySelector('#guestExit').onclick=()=>{guest=null;guestBox.classList.add('hidden')};
     }
-    function studyPublic(x){if(!x.words.length)return say('Bu liste boş.');guest={list:{...x,words:[...x.words].sort(()=>Math.random()-.5)},index:0,correct:0,shown:false};guestBox.classList.remove('hidden');drawGuest();guestBox.scrollIntoView({behavior:'smooth'})}
+    function studyPublic(x){
+      if(!x.words.length)return say('Bu liste boş.');
+      guest={list:{...x,words:[...x.words].sort(()=>Math.random()-.5)},index:0,correct:0,shown:false,direction:'en',enFirst:true};
+      guestBox.classList.remove('hidden');drawGuest();guestBox.scrollIntoView({behavior:'smooth',block:'start'});
+    }
     const render=()=>{const q=document.getElementById('communitySearch').value.trim().toLocaleLowerCase('tr-TR');const filtered=items.filter(x=>(x.title+' '+x.category+' '+x.words.map(w=>w.en+' '+w.tr).join(' ')).toLocaleLowerCase('tr-TR').includes(q));results.innerHTML=filtered.length?filtered.map(x=>'<div class="item"><strong>'+esc(x.title)+'</strong><div class="muted">'+esc(x.category)+' · '+x.words.length+' kelime · '+esc(x.authorName||'Topluluk üyesi')+'</div><div class="row" style="margin-top:10px"><button class="btn alt small" data-preview="'+esc(x.id)+'">Önizle</button><button class="btn alt small" data-study="'+esc(x.id)+'">Çalış</button><button class="btn small" data-copy="'+esc(x.id)+'">Listelerime ekle</button></div></div>').join(''):'<div class="empty">Eşleşen paylaşım bulunamadı.</div>';results.querySelectorAll('[data-preview]').forEach(b=>b.onclick=()=>{const x=items.find(v=>v.id===b.dataset.preview);if(x)alert(x.words.map(w=>w.en+' — '+w.tr+(w.example?'\n'+w.example:'')).join('\n\n').slice(0,12000))});results.querySelectorAll('[data-study]').forEach(b=>b.onclick=()=>{const x=items.find(v=>v.id===b.dataset.study);if(x)studyPublic(x)});results.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{const x=items.find(v=>v.id===b.dataset.copy);if(!x)return;if(!current||!window.vocaReady){say('Listeyi kendine eklemek için giriş yapıp verilerinin yüklenmesini beklemelisin.');account.scrollIntoView({behavior:'smooth'});return}const db=window.wordmasterCommunityDb();const c={id:crypto.randomUUID(),name:x.category||'Topluluk'};const l={id:crypto.randomUUID(),categoryId:c.id,name:x.title};db.categories.push(c);db.lists.push(l);let added=0;for(const w of x.words){let existing=db.words.find(v=>v.en.trim().toLocaleLowerCase('en')===w.en.trim().toLocaleLowerCase('en')&&v.tr===w.tr&&v.example===w.example);if(existing){if(!existing.listIds.includes(l.id))existing.listIds.push(l.id)}else{db.words.push({id:crypto.randomUUID(),en:w.en,tr:w.tr,example:w.example||'',listIds:[l.id],srs:{reps:0,interval:0,ease:2.5,due:new Date().toLocaleDateString('en-CA'),misses:0}});added++}}window.wordmasterCommunitySave();window.wordmasterCommunityRefreshOwn?.();say('Liste kopyalandı: '+x.title+' · '+added+' yeni kelime. Kopyan bağımsızdır.');})};
     async function load(){say('Listeler yükleniyor...');try{const snap=await getDocs(query(publicCollection,limit(100)));items=snap.docs.map(d=>({id:d.id,...d.data()})).filter(x=>Array.isArray(x.words));render();say(items.length+' topluluk listesi bulundu.')}catch(e){say('Listeler yüklenemedi: '+e.code)}}
     document.getElementById('communitySearch').addEventListener('input',render);
