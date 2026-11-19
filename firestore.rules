@@ -18,7 +18,8 @@ service cloud.firestore {
     match /publicLists/{listId} {
       allow read: if true;
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['ownerUid','authorName','title','category','words','createdAt'])
+        && request.resource.data.keys().hasOnly(['ownerUid','authorName','title','category','words','createdAt','localListId'])
+        && (!('localListId' in request.resource.data) || request.resource.data.localListId is string)
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.authorName is string
         && request.resource.data.authorName.size() <= 80
@@ -31,7 +32,8 @@ service cloud.firestore {
         && request.resource.data.words.size() > 0
         && request.resource.data.words.size() <= 500
         && request.resource.data.createdAt == request.time;
-      allow update, delete: if false;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+      allow update: if false;
     }
     match /{document=**} { allow read, write: if false; }
   }
