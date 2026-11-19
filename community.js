@@ -41,8 +41,8 @@ if(!cfg?.apiKey||!cfg?.projectId){
         account.innerHTML='<span class="muted">Giriş: '+esc(u.email)+'</span> <button class="btn alt small" id="communityLogout">Çıkış</button><p class="muted" id="cloudState">Kişisel veriler yükleniyor...</p>';
         document.getElementById('communityLogout').onclick=async()=>{
           if(lastError){say('Kaydedilemeyen değişiklikler var. Önce bağlantını kontrol et.');return}
-          if(timer){clearTimeout(timer);timer=null;window.vocaCloudSave(window.wordmasterCommunityDb());}
-          await flush();await signOut(auth);go('community');
+          if(timer){clearTimeout(timer);timer=null;const snapshot=JSON.parse(JSON.stringify(window.wordmasterCommunityDb()));await setDoc(personalRef(u),{data:snapshot,updatedAt:serverTimestamp()}).catch(e=>{lastError=e.code||e.message;});}
+          await flush();if(lastError){say('Bulut kaydı tamamlanamadı: '+lastError+'. Oturum açık tutuldu.');return}await signOut(auth);go('community');
         };
         try{
           const snap=await getDoc(personalRef(u));
