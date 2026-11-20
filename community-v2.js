@@ -67,6 +67,45 @@ if(!cfg?.apiKey||!cfg?.projectId){
     document.getElementById('communityRefresh').onclick=load;
     document.getElementById('communityPublish').onclick=async()=>{if(!current||!window.vocaReady)return say('Liste yayımlamak için giriş yapıp verilerinin yüklenmesini bekle.');const db=window.wordmasterCommunityDb(),id=document.getElementById('communityOwnList').value,l=db.lists.find(x=>x.id===id);if(!l)return say('Önce yayımlanacak listeyi seç.');const words=db.words.filter(w=>w.listIds.includes(id)).map(w=>({en:w.en,tr:w.tr,example:w.example||''}));if(!words.length)return say('Boş liste yayımlanamaz.');if(words.length>500)return say('Bir paylaşım en fazla 500 kelime içerebilir.');if(!confirm(l.name+' listesindeki '+words.length+' kelime herkese açık yayımlansın mı?'))return;try{await addDoc(publicCollection,{ownerUid:current.uid,authorName:current.email.split('@')[0],title:l.name,category:db.categories.find(c=>c.id===l.categoryId)?.name||'Genel',words,createdAt:serverTimestamp()});say('Liste yayımlandı.');await load()}catch(e){say('Yayımlanamadı: '+e.code)}};
     const ownedPublications=()=>items.filter(x=>current&&x.ownerUid===current.uid);
+    let bulkSharingBusy=false;
+    async function bulkSharing(action){
+      if(bulkSharingBusy||!current||!window.vocaReady)return;
+      const db=window.wordmasterCommunityDb();
+      const owned=ownedPublications();
+      const candidates=action==='share'?db.lists.filter(l=>!owned.some(p=>p.localListId===l.id)):owned;
+      if(!candidates.length){say('Değiştirilecek liste bulunamadı.');return}
+      const message=action==='share'?candidates.length+' liste paylaşılacak. Boş veya 500 kelimeyi aşan listeler atlanacak. Devam edilsin mi?':candidates.length+' paylaşım topluluktan kaldırılacak. Kişisel listelerin korunacak. Devam edilsin mi?';
+      if(!confirm(message))return;
+      bulkSharingBusy=true;
+      let ok=0,skipped=0,errors=0;
+      const buttons=document.querySelectorAll('[data-bulk-sharing]');
+      buttons.forEach(b=>b.disabled=true);
+      try{
+        for(const entry of candidates){
+          if(!current||!window.vocaReady)break;
+          try{
+            if(action==='share'){
+              const words=db.words.filter(w=>w.listIds.includes(entry.id)).map(w=>({en:w.en,tr:w.tr,example:w.example||''}));
+              if(!words.length||words.length>500){skipped++;continue}
+              const c=db.categories.find(v=>v.id===entry.categoryId);
+              await addDoc(publicCollection,{ownerUid:current.uid,localListId:entry.id,authorName:current.email.split('@')[0],title:entry.name,category:c?.name||'Genel',words,createdAt:serverTimestamp()});
+            }else{
+              await deleteDoc(doc(store,'publicLists',entry.id));
+            }
+            ok++;
+          }catch(e){errors++;say('İşlem devam ediyor: '+ok+' başarılı, '+errors+' hatalı. Son hata: '+(e.code||e.message))}
+          const progress=document.getElementById('sharingBulkStatus');
+          if(progress)progress.textContent=(ok+skipped+errors)+' / '+candidates.length+' işlendi';
+        }
+        await load();
+        say((action==='share'?'Paylaşım':'Paylaşımı kaldırma')+' tamamlandı: '+ok+' başarılı, '+skipped+' atlandı, '+errors+' hata.');
+      }finally{
+        bulkSharingBusy=false;
+        buttons.forEach(b=>b.disabled=false);
+      }
+    }
+    document.getElementById('shareAllLists')?.addEventListener('click',()=>bulkSharing('share'));
+    document.getElementById('unshareAllLists')?.addEventListener('click',()=>bulkSharing('unshare'));
     window.vocaRefreshSharing=()=>{
       const db=window.wordmasterCommunityDb(),box=document.getElementById('sharingListControls');
       if(!box)return;
