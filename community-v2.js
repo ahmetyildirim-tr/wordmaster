@@ -47,7 +47,39 @@ if(!cfg?.apiKey||!cfg?.projectId){
         try{
           const snap=await getDoc(personalRef(u));
           if(token!==generation)return;
-          window.vocaDataLoad(snap.exists()?snap.data().data:empty());
+          const cloudData=snap.exists()?snap.data().data:empty();
+          let recovery=null;
+          try{
+            const local=JSON.parse(localStorage.getItem('vocalist-clean-v1')||'null');
+            if(local&&Array.isArray(local.categories)&&Array.isArray(local.lists)&&Array.isArray(local.words)&&Array.isArray(local.reviews)){
+              const cloudListIds=new Set((cloudData?.lists||[]).map(l=>l.id));
+              const missing=local.lists.filter(l=>!cloudListIds.has(l.id));
+              if(missing.length)recovery={local,missing};
+            }
+          }catch(e){}
+          window.vocaDataLoad(cloudData);
+          if(recovery){
+            const msg='Bu cihazda bulutta bulunmayan '+recovery.missing.length+' liste tespit edildi. Bunları mevcut bulut verilerini silmeden kurtarmak ister misin?';
+            if(confirm(msg)){
+              const merged=JSON.parse(JSON.stringify(cloudData));
+              const categoryIds=new Set(merged.categories.map(c=>c.id));
+              const listIds=new Set(merged.lists.map(l=>l.id));
+              const wordIds=new Set(merged.words.map(w=>w.id));
+              const reviewIds=new Set(merged.reviews.map(r=>r.id).filter(Boolean));
+              for(const c of recovery.local.categories)if(!categoryIds.has(c.id)){merged.categories.push(c);categoryIds.add(c.id)}
+              for(const l of recovery.local.lists)if(!listIds.has(l.id)){merged.lists.push(l);listIds.add(l.id)}
+              for(const w of recovery.local.words){
+                const existing=merged.words.find(x=>x.id===w.id)||merged.words.find(x=>x.en.trim().toLowerCase()===w.en.trim().toLowerCase());
+                if(existing){existing.listIds=[...new Set([...(existing.listIds||[]),...(w.listIds||[])].filter(id=>listIds.has(id)))]}
+                else if(!wordIds.has(w.id)){merged.words.push(w);wordIds.add(w.id)}
+              }
+              for(const r of recovery.local.reviews)if(r.id&&!reviewIds.has(r.id)){merged.reviews.push(r);reviewIds.add(r.id)}
+              window.vocaDataLoad(merged);
+              await setDoc(personalRef(u),{data:merged,updatedAt:serverTimestamp()});
+              say('Yerel listeler kurtarıldı ve buluta kaydedildi.');
+              localStorage.removeItem('vocalist-clean-v1');
+            }
+          }
           window.vocaReady=true;
           document.getElementById('cloudState').textContent='Kişisel listelerin ve çalışma geçmişin bulutta saklanır.';
           say('Hesap verileri yüklendi.');window.vocaRefreshSharing?.();
