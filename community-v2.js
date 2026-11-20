@@ -110,7 +110,8 @@ if(!cfg?.apiKey||!cfg?.projectId){
       const db=window.wordmasterCommunityDb(),box=document.getElementById('sharingListControls');
       if(!box)return;
       box.replaceChildren();
-      if(!current||!window.vocaReady){box.textContent='Listelerini paylaşmak için giriş yap.';return}
+      if(!current||!window.vocaReady){box.textContent='Tek tek paylaşım kutularını görmek için giriş yapıp listelerinin yüklenmesini bekle.';return}
+      if(!db.lists.length){box.textContent='Henüz kişisel listen yok.';return}
       for(const l of db.lists){
         const c=db.categories.find(v=>v.id===l.categoryId);
         const match=ownedPublications().find(x=>x.localListId===l.id);
