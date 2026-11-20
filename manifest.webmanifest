@@ -1,1 +1,18 @@
-{"name":"WordMaster - İngilizce Kelime Defterim","short_name":"WordMaster","description":"Kategorili İngilizce kelime çalışma ve akıllı tekrar uygulaması","start_url":"./index.html","display":"standalone","background_color":"#f5f7fb","theme_color":"#152b46","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{
+  "name": "VocaList",
+  "short_name": "VocaList",
+  "description": "İngilizce kelime öğrenme, listeler ve akıllı tekrar",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#071b4a",
+  "theme_color": "#071b4a",
+  "icons": [
+    {
+      "src": "vocalist-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
